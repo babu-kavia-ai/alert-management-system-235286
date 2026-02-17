@@ -1,28 +1,48 @@
 "use client";
 
+import React from "react";
 import { AppShell } from "@/components/AppShell";
 import { RouteGuard } from "@/components/RouteGuard";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-} from "recharts";
+import { apiRequest } from "@/lib/apiClient";
+import { getSession } from "@/lib/auth";
 
-const data = [
-  { day: "Mon", sent: 120, failed: 3 },
-  { day: "Tue", sent: 160, failed: 2 },
-  { day: "Wed", sent: 140, failed: 5 },
-  { day: "Thu", sent: 210, failed: 4 },
-  { day: "Fri", sent: 190, failed: 1 },
-  { day: "Sat", sent: 90, failed: 2 },
-  { day: "Sun", sent: 110, failed: 3 },
-];
+type AnalyticsSummary = {
+  total_alerts: number;
+  active_alerts: number;
+  deliveries_total: number;
+  deliveries_sent: number;
+  deliveries_failed: number;
+};
 
 export default function AnalyticsPage() {
+  const session = getSession();
+  const [summary, setSummary] = React.useState<AnalyticsSummary | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function load() {
+    if (!session) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiRequest<AnalyticsSummary>({
+        method: "GET",
+        path: "/analytics/summary",
+        token: session.token,
+      });
+      setSummary(data);
+    } catch (err: any) {
+      setError(err?.message || "Failed to load analytics");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  React.useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <RouteGuard>
       <AppShell title="Analytics">
@@ -30,29 +50,52 @@ export default function AnalyticsPage() {
           <section className="card">
             <div className="card-body">
               <h1 className="text-xl font-semibold">Analytics</h1>
-              <p className="mt-1 text-sm text-[var(--muted)]">
-                Track notification volume and delivery health.
-              </p>
+              <p className="mt-1 text-sm text-[var(--muted)]">Track notification volume and delivery health.</p>
             </div>
           </section>
 
+          {error && (
+            <section className="card">
+              <div className="card-body">
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {error}
+                </div>
+              </div>
+            </section>
+          )}
+
           <section className="card">
             <div className="card-body">
-              <div className="text-sm font-semibold">Delivery (last 7 days)</div>
-              <div className="mt-4 h-[320px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={data} margin={{ top: 5, right: 16, bottom: 0, left: -10 }}>
-                    <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" />
-                    <XAxis dataKey="day" stroke="#6b7280" fontSize={12} />
-                    <YAxis stroke="#6b7280" fontSize={12} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="sent" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="failed" stroke="#ef4444" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-2 text-xs text-[var(--muted)]">
-                Chart uses recharts; replace demo data once backend analytics endpoints are available.
+              {loading ? (
+                <div className="text-sm text-[var(--muted)]">Loading…</div>
+              ) : !summary ? (
+                <div className="text-sm text-[var(--muted)]">No data.</div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  <div className="rounded-xl border border-[var(--border)] p-3">
+                    <div className="text-xs text-[var(--muted)]">Total alerts</div>
+                    <div className="mt-1 text-lg font-semibold">{summary.total_alerts}</div>
+                  </div>
+                  <div className="rounded-xl border border-[var(--border)] p-3">
+                    <div className="text-xs text-[var(--muted)]">Active alerts</div>
+                    <div className="mt-1 text-lg font-semibold">{summary.active_alerts}</div>
+                  </div>
+                  <div className="rounded-xl border border-[var(--border)] p-3">
+                    <div className="text-xs text-[var(--muted)]">Deliveries total</div>
+                    <div className="mt-1 text-lg font-semibold">{summary.deliveries_total}</div>
+                  </div>
+                  <div className="rounded-xl border border-[var(--border)] p-3">
+                    <div className="text-xs text-[var(--muted)]">Sent</div>
+                    <div className="mt-1 text-lg font-semibold">{summary.deliveries_sent}</div>
+                  </div>
+                  <div className="rounded-xl border border-[var(--border)] p-3">
+                    <div className="text-xs text-[var(--muted)]">Failed</div>
+                    <div className="mt-1 text-lg font-semibold">{summary.deliveries_failed}</div>
+                  </div>
+                </div>
+              )}
+              <div className="mt-3 text-xs text-[var(--muted)]">
+                This verifies UI → API → DB analytics aggregation.
               </div>
             </div>
           </section>

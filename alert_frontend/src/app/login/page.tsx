@@ -2,27 +2,52 @@
 
 import React, { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { apiRequest } from "@/lib/apiClient";
 import { setSession, Role } from "@/lib/auth";
+
+type TokenResponse = { access_token: string; token_type?: string };
 
 function LoginForm() {
   const router = useRouter();
   const sp = useSearchParams();
 
   const [email, setEmail] = React.useState("admin@example.com");
+  const [password, setPassword] = React.useState("change-me-now");
   const [role, setRole] = React.useState<Role>("admin");
-  const [token, setToken] = React.useState("dev-token");
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const next = sp.get("next") || "/";
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiRequest<TokenResponse>({
+        method: "POST",
+        path: "/auth/login",
+        body: { email, password },
+      });
+
+      setSession({ email, role, token: res.access_token });
+      router.replace(next);
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err ? String((err as any).message) : "Login failed";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <section className="w-full max-w-md card">
       <div className="card-body">
         <h1 className="text-xl font-semibold">Sign in</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Dev login (backend auth endpoints not yet available in OpenAPI spec).
-        </p>
+        <p className="mt-1 text-sm text-[var(--muted)]">Sign in using the backend JWT auth.</p>
 
-        <div className="mt-5 space-y-3">
+        <form className="mt-5 space-y-3" onSubmit={onSubmit}>
           <label className="block">
             <div className="text-sm font-medium">Email</div>
             <input
@@ -35,7 +60,22 @@ function LoginForm() {
           </label>
 
           <label className="block">
-            <div className="text-sm font-medium">Role</div>
+            <div className="text-sm font-medium">Password</div>
+            <input
+              type="password"
+              className="mt-1 w-full rounded-xl border border-[var(--border)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+            />
+            <div className="mt-1 text-xs text-[var(--muted)]">
+              Default dev admin is configured by backend env (BOOTSTRAP_ADMIN_*).
+            </div>
+          </label>
+
+          <label className="block">
+            <div className="text-sm font-medium">Role (UI gating only)</div>
             <select
               className="mt-1 w-full rounded-xl border border-[var(--border)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
               value={role}
@@ -46,34 +86,24 @@ function LoginForm() {
             </select>
           </label>
 
-          <label className="block">
-            <div className="text-sm font-medium">Token</div>
-            <input
-              className="mt-1 w-full rounded-xl border border-[var(--border)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Bearer token"
-            />
-            <div className="mt-1 text-xs text-[var(--muted)]">
-              Stored locally; used by the API client as Authorization: Bearer &lt;token&gt;.
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
             </div>
-          </label>
+          )}
 
           <button
-            className="mt-2 w-full rounded-xl bg-gradient-to-r from-[var(--primary)] to-[var(--accent)] px-4 py-2.5 text-white text-sm font-semibold hover:opacity-95"
-            onClick={() => {
-              setSession({ email, role, token });
-              router.replace(next);
-            }}
+            type="submit"
+            disabled={loading}
+            className="mt-2 w-full rounded-xl bg-gradient-to-r from-[var(--primary)] to-[var(--accent)] px-4 py-2.5 text-white text-sm font-semibold hover:opacity-95 disabled:opacity-60"
           >
-            Continue
+            {loading ? "Signing in…" : "Continue"}
           </button>
 
           <div className="text-xs text-[var(--muted)]">
-            Tip: try accessing <span className="font-medium">/admin</span> as role “user” to see
-            RBAC redirect.
+            Tip: try accessing <span className="font-medium">/admin</span> as role “user” to see RBAC redirect.
           </div>
-        </div>
+        </form>
       </div>
     </section>
   );
